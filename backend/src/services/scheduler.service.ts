@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import { addEmailJob, removeEmailJob } from '../queues/email.queue';
+import { emailQueue, removeEmailJob } from '../queues/email.queue';
 import { EmailJobData } from '../queues/queue.types';
 import { CampaignStatus, EmailStatus } from '@prisma/client';
 import { SearchService } from './search.service';
@@ -119,50 +119,58 @@ export class SchedulerService {
       return { newCampaign, emailRecords };
     });
 
-    // 4. Enqueue delayed jobs into BullMQ
-    const enqueuedJobs: string[] = [];
+    // 4. Enqueue jobs into BullMQ using bulk insertion in 1 single network roundtrip!
+    const bulkJobs = campaign.emailRecords.map((record) => {
+      const targetTime = record.scheduledAt.getTime();
+      const delayMs = Math.max(0, targetTime - Date.now());
+
+      const jobData: EmailJobData = {
+        emailId: record.id,
+        campaignId: campaign.newCampaign.id,
+        userId,
+        senderId,
+        recipientEmail: record.recipientEmail,
+        subject: record.subject,
+        body: record.body,
+        scheduledAt: record.scheduledAt.toISOString(),
+        delayBetweenEmails,
+        hourlyLimit,
+      };
+
+      return {
+        name: 'send-email',
+        data: jobData,
+        opts: {
+          jobId: record.bullJobId,
+          delay: delayMs,
+        },
+      };
+    });
+
+    try {
+      await emailQueue.addBulk(bulkJobs);
+    } catch (err: any) {
+      console.error('⚠️ BullMQ addBulk warning:', err.message);
+      // Outbox recovery pattern handles re-enqueueing if needed
+    }
+
+    // Non-blocking asynchronous search indexing
     for (const record of campaign.emailRecords) {
-      try {
-        const jobData: EmailJobData = {
-          emailId: record.id,
-          campaignId: campaign.newCampaign.id,
-          userId,
-          senderId,
-          recipientEmail: record.recipientEmail,
-          subject: record.subject,
-          body: record.body,
-          scheduledAt: record.scheduledAt.toISOString(),
-          delayBetweenEmails,
-          hourlyLimit,
-        };
-
-        await addEmailJob(jobData, record.scheduledAt);
-        enqueuedJobs.push(record.bullJobId);
-
-        // Asynchronously index in Elasticsearch
-        SearchService.indexEmail({
-          id: record.id,
-          emailId: record.id,
-          userId,
-          campaignId: campaign.newCampaign.id,
-          campaignName: campaign.newCampaign.name,
-          senderId,
-          senderEmail: sender.email,
-          recipientEmail: record.recipientEmail,
-          subject: record.subject,
-          body: record.body,
-          status: 'scheduled',
-          scheduledAt: record.scheduledAt.toISOString(),
-          createdAt: record.scheduledAt.toISOString(),
-        }).catch((e) => console.warn('Non-blocking ES index warning:', e.message));
-      } catch (err: any) {
-        console.error(
-          `⚠️ Failed to enqueue BullMQ job for email ${record.id}:`,
-          err.message
-        );
-        // Outbox pattern: Email is committed in DB with status=scheduled.
-        // Startup reconciliation service will recover any missing jobs.
-      }
+      SearchService.indexEmail({
+        id: record.id,
+        emailId: record.id,
+        userId,
+        campaignId: campaign.newCampaign.id,
+        campaignName: campaign.newCampaign.name,
+        senderId,
+        senderEmail: sender.email,
+        recipientEmail: record.recipientEmail,
+        subject: record.subject,
+        body: record.body,
+        status: 'scheduled',
+        scheduledAt: record.scheduledAt.toISOString(),
+        createdAt: record.scheduledAt.toISOString(),
+      }).catch((e) => console.warn('Non-blocking ES index warning:', e.message));
     }
 
     return {
@@ -170,7 +178,7 @@ export class SchedulerService {
       totalScheduled: campaign.emailRecords.length,
       firstScheduledAt: emailSchedulePlan[0]?.scheduledAt,
       lastScheduledAt: emailSchedulePlan[emailSchedulePlan.length - 1]?.scheduledAt,
-      enqueuedJobCount: enqueuedJobs.length,
+      enqueuedJobCount: bulkJobs.length,
     };
   }
 
