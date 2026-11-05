@@ -63,24 +63,47 @@ export async function removeEmailJob(jobId: string): Promise<boolean> {
 }
 
 /**
- * Retrieves real-time counts from BullMQ
+ * Retrieves real-time counts from BullMQ with a strict 2-second timeout
+ * so Redis network delays never block the dashboard.
  */
 export async function getQueueStatistics(): Promise<QueueStatistics> {
-  const [waiting, active, delayed, completed, failed, isPaused] = await Promise.all([
-    emailQueue.getWaitingCount(),
-    emailQueue.getActiveCount(),
-    emailQueue.getDelayedCount(),
-    emailQueue.getCompletedCount(),
-    emailQueue.getFailedCount(),
-    emailQueue.isPaused(),
-  ]);
-
-  return {
-    waiting,
-    active,
-    delayed,
-    completed,
-    failed,
-    paused: isPaused ? 1 : 0,
+  const defaultStats: QueueStatistics = {
+    waiting: 0,
+    active: 0,
+    delayed: 0,
+    completed: 0,
+    failed: 0,
+    paused: 0,
   };
+
+  try {
+    const statsPromise = Promise.all([
+      emailQueue.getWaitingCount(),
+      emailQueue.getActiveCount(),
+      emailQueue.getDelayedCount(),
+      emailQueue.getCompletedCount(),
+      emailQueue.getFailedCount(),
+      emailQueue.isPaused(),
+    ]);
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Queue stats query timeout')), 2000)
+    );
+
+    const [waiting, active, delayed, completed, failed, isPaused] = (await Promise.race([
+      statsPromise,
+      timeoutPromise,
+    ])) as [number, number, number, number, number, boolean];
+
+    return {
+      waiting,
+      active,
+      delayed,
+      completed,
+      failed,
+      paused: isPaused ? 1 : 0,
+    };
+  } catch {
+    return defaultStats;
+  }
 }
