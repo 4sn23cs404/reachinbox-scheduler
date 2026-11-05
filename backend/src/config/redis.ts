@@ -20,6 +20,7 @@ function createRedisClient() {
     return new Redis(redisUrl, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      keepAlive: 10000,
       // Required for Upstash: explicit TLS with rejectUnauthorized false
       tls: isTLS ? { rejectUnauthorized: false } : undefined,
       retryStrategy(times) {
@@ -37,7 +38,11 @@ redisClient.on('connect', () => {
   console.log('✅ [Redis] Connection established successfully.');
 });
 
-redisClient.on('error', (err) => {
+redisClient.on('error', (err: any) => {
+  // Upstash periodically closes idle connections; ioredis reconnects automatically
+  if (err.message?.includes('ECONNRESET') || err.code === 'ECONNRESET') {
+    return;
+  }
   console.error('❌ [Redis Error]:', err.message);
 });
 
