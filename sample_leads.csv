@@ -1,0 +1,8 @@
+Email,Name,Company
+alex.smith@example.com,Alex Smith,Acme Corp
+sarah.johnson@example.com,Sarah Johnson,TechFlow Inc
+david.lee@example.com,David Lee,Starlight Labs
+alex.smith@example.com,Alex Duplicate,Acme Corp
+invalid-email-address,Bad Entry,Invalid Ltd
+emma.watson@example.com,Emma Watson,Global Ventures
+ryan.gosling@example.com,Ryan Gosling,Drive Studios
