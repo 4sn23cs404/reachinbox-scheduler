@@ -1,8 +1,11 @@
-Email,Name,Company
-alex.smith@example.com,Alex Smith,Acme Corp
-sarah.johnson@example.com,Sarah Johnson,TechFlow Inc
-david.lee@example.com,David Lee,Starlight Labs
-alex.smith@example.com,Alex Duplicate,Acme Corp
-invalid-email-address,Bad Entry,Invalid Ltd
-emma.watson@example.com,Emma Watson,Global Ventures
-ryan.gosling@example.com,Ryan Gosling,Drive Studios
+email,name,company
+alice@example.com,Alice Johnson,TechCorp
+bob@example.com,Bob Smith,StartupXYZ
+carol@example.com,Carol Williams,GrowthCo
+david@example.com,David Brown,SaaSInc
+emma@example.com,Emma Davis,CloudBase
+frank@example.com,Frank Miller,DevStudio
+grace@example.com,Grace Wilson,MarketPro
+henry@example.com,Henry Moore,ScaleUp
+iris@example.com,Iris Taylor,FounderHub
+jack@example.com,Jack Anderson,VentureX
