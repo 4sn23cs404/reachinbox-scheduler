@@ -1,5 +1,7 @@
 import Redis, { RedisOptions } from 'ioredis';
 
+const redisUrl = process.env.REDIS_URL;
+
 const redisOptions: RedisOptions = {
   host: process.env.REDIS_HOST || 'localhost',
   port: Number(process.env.REDIS_PORT) || 6379,
@@ -12,17 +14,24 @@ const redisOptions: RedisOptions = {
   },
 };
 
-// ioredis natively handles rediss:// (TLS) when given a URL — no extra tls:{} needed
-export const redisClient = process.env.REDIS_URL
-  ? new Redis(process.env.REDIS_URL, {
+function createRedisClient() {
+  if (redisUrl) {
+    const isTLS = redisUrl.startsWith('rediss://');
+    return new Redis(redisUrl, {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      // Required for Upstash: explicit TLS with rejectUnauthorized false
+      tls: isTLS ? { rejectUnauthorized: false } : undefined,
       retryStrategy(times) {
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
-    })
-  : new Redis(redisOptions);
+    });
+  }
+  return new Redis(redisOptions);
+}
+
+export const redisClient = createRedisClient();
 
 redisClient.on('connect', () => {
   console.log('✅ [Redis] Connection established successfully.');
